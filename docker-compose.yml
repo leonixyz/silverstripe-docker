@@ -1,0 +1,17 @@
+version: "3.9"
+services:
+  httpd:
+    image: silverstripe-httpd
+    volumes:
+      - ./src/html:/var/www/html
+    network_mode: host
+  db:
+    image: silverstripe-db
+    volumes:
+     - ./db:/var/lib/mysql
+    environment:
+      MARIADB_USE: mariadb
+      MARIADB_PASSWOR: mariadb
+      MARIADB_ROOT_PASSWOR: mariadb
+      MARIADB_DATABAS: silverstripe
+    network_mode: host
