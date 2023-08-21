@@ -1,4 +1,4 @@
-FROM php:8.1.19-apache
+FROM php:8.3-apache
 
 ARG MY_UID
 ARG MY_GID
@@ -9,7 +9,8 @@ RUN apt install -y libicu-dev
 RUN docker-php-ext-configure intl
 RUN docker-php-ext-install -j$(nproc) intl
 
-RUN apt install -y zlib1g-dev libpng-dev
+RUN apt install -y zlib1g-dev libpng-dev libjpeg62-turbo-dev libfreetype-dev
+RUN docker-php-ext-configure gd --enable-gd --with-freetype --with-jpeg
 RUN docker-php-ext-install -j$(nproc) gd
 
 RUN docker-php-ext-configure mysqli
@@ -20,4 +21,5 @@ RUN a2enmod rewrite
 RUN usermod -u $MY_UID www-data
 RUN groupmod -g $MY_GID www-data
 
-COPY httpd/httpd.conf /etc/apache2/sites-available/000-default.conf
+RUN echo "upload_max_filesize = 32M" > $PHP_INI_DIR/conf.d/upload_max_filesize.ini
+RUN echo "post_max_size = 32M" > $PHP_INI_DIR/conf.d/post_max_size.ini

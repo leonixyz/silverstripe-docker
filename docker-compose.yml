@@ -1,17 +1,119 @@
-version: "3.9"
 services:
-  httpd:
-    image: silverstripe-httpd
+
+  silverstripe-db:
+    image: silverstripe-db:0.0.0
+    build:
+      context: ./docker
+      dockerfile: db.dockerfile
+      args:
+        MY_UID: ${MY_UID}
+        MY_GID: ${MY_GID}
     volumes:
-      - ./src/html:/var/www/html
-    network_mode: host
-  db:
-    image: silverstripe-db
-    volumes:
-     - ./db:/var/lib/mysql
+    - ./data/db:/var/lib/mysql
     environment:
-      MARIADB_USE: mariadb
-      MARIADB_PASSWOR: mariadb
-      MARIADB_ROOT_PASSWOR: mariadb
-      MARIADB_DATABAS: silverstripe
+      MARIADB_USER: mariadb
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD}
+      MARIADB_DATABASE: silverstripe
     network_mode: host
+    restart: "unless-stopped"
+
+  silverstripe-init:
+    image: silverstripe-init:0.0.0
+    user: ${MY_UID}:${MY_GID}
+    build:
+      context: ./docker
+      dockerfile: init.dockerfile
+    volumes:
+    - ./src/silverstripe:/app
+    environment:
+      SS_DATABASE_CLASS: "MySQLDatabase"
+      SS_DATABASE_SERVER: "127.0.0.1"
+      SS_DATABASE_USERNAME: "mariadb"
+      SS_DATABASE_PASSWORD: ${MARIADB_PASSWORD}
+      SS_DATABASE_NAME: "silverstripe"
+      SS_ENVIRONMENT_TYPE: ${ENVIRONMENT_TYPE}
+      SS_DEFAULT_ADMIN_USERNAME: "admin"
+      SS_DEFAULT_ADMIN_PASSWORD: ${SS_DEFAULT_ADMIN_PASSWORD}
+      SS_BASE_URL: ${SS_BASE_URL}
+    network_mode: host
+
+  silverstripe-httpd:
+    image: silverstripe-httpd:0.0.0
+    build:
+      context: ./docker
+      dockerfile: httpd.dockerfile
+      args:
+        MY_UID: ${MY_UID}
+        MY_GID: ${MY_GID}
+    depends_on:
+      silverstripe-db:
+        condition: service_started
+      silverstripe-init:
+        condition: service_completed_successfully
+    volumes:
+    - ./src/silverstripe:/var/www/html
+    - ./conf/httpd/apache2.conf:/etc/apache2/apache2.conf
+    - ./conf/httpd/ports.conf:/etc/apache2/ports.conf
+    - ./conf/httpd/000-default.conf:/etc/apache2/sites-available/000-default.conf
+    environment:
+      SS_DATABASE_CLASS: "MySQLDatabase"
+      SS_DATABASE_SERVER: "127.0.0.1"
+      SS_DATABASE_USERNAME: "mariadb"
+      SS_DATABASE_PASSWORD: ${MARIADB_PASSWORD}
+      SS_DATABASE_NAME: "silverstripe"
+      SS_ENVIRONMENT_TYPE: ${ENVIRONMENT_TYPE}
+      SS_DEFAULT_ADMIN_USERNAME: "admin"
+      SS_DEFAULT_ADMIN_PASSWORD: ${SS_DEFAULT_ADMIN_PASSWORD}
+      SS_BASE_URL: ${SS_BASE_URL}
+      # SS_TRACE_DB_QUERY_ORIGIN: true
+    network_mode: host
+    restart: "unless-stopped"
+
+  phpmyadmin:
+    image: phpmyadmin
+    network_mode: host
+    depends_on:
+    - silverstripe-db
+    environment:
+      APACHE_PORT: 8888
+      PMA_HOST: 127.0.0.1
+      PMA_PORT: 3306
+      PMA_USER: mariadb
+      PMA_PASSWORD: ${MARIADB_PASSWORD}
+    restart: "unless-stopped"
+
+  traefik-init:
+    image: busybox
+    command:
+    - chmod
+    - "600"
+    - /etc/traefik/acme.json
+    volumes:
+      - ./conf/traefik:/etc/traefik
+
+  traefik:
+    image: traefik:v2.10
+    command:
+    # - "--api.debug=true"
+    # - "--log.level=DEBUG"
+    - "--api.insecure=true"
+    - "--providers.file.directory=/etc/traefik"
+    - "--providers.file.watch=true"
+    - "--serverstransport.insecureskipverify"
+    - "--entrypoints.web.address=:80"
+    - "--entrypoints.websecure.address=:443"
+    - "--entrypoints.websecure.http.tls=true"
+    - "--entrypoints.traefik.address=:8080"
+    - "--certificatesresolvers.letsencrypt_resolver.acme.httpchallenge=true"
+    - "--certificatesresolvers.letsencrypt_resolver.acme.httpchallenge.entrypoint=web"
+    - "--certificatesresolvers.letsencrypt_resolver.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory"
+    - "--certificatesresolvers.letsencrypt_resolver.acme.email=postmaster@example.test"
+    - "--certificatesresolvers.letsencrypt_resolver.acme.storage=/etc/traefik/acme.json"
+    depends_on:
+    - traefik-init
+    - silverstripe-httpd
+    volumes:
+      - ./conf/traefik:/etc/traefik
+    network_mode: "host"
+    restart: "unless-stopped"

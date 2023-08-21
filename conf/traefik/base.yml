@@ -1,0 +1,49 @@
+# http routing section
+http:
+
+  # Define a connection between requests and services
+  routers:
+
+    # to traefik
+    to-traefik:
+      entrypoints:
+      - traefik
+      service: traefik
+
+    # silverstripe http-only
+    to-http-silverstripe:
+      entrypoints:
+      - web
+      rule: "PathPrefix(`/`)"
+      service: silverstripe
+      middlewares:
+        - redirect-to-https
+
+    # silverstripe
+    to-https-silverstripe:
+      entrypoints:
+      - websecure
+      rule: "PathPrefix(`/`)"
+      service: silverstripe
+      tls:
+        certResolver: letsencrypt_resolver
+        domains:
+          - main: "www.example.test"
+
+  # Path rewrite rules, authentication, etc.
+  middlewares:
+    redirect-to-https:
+      redirectScheme:
+        permanent: true
+        scheme: https
+
+  # Define how to reach an existing service on our infrastructure
+  services:
+    silverstripe:
+      loadBalancer:
+        servers:
+        - url: http://127.0.0.1:8008/
+    traefik:
+      loadBalancer:
+        servers:
+        - url: http://127.0.0.1:8080/
